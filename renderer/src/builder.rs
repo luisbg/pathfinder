@@ -13,6 +13,7 @@
 use crate::concurrent::executor::Executor;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive, RenderCommand};
 use crate::options::{PreparedRenderOptions, RenderCommandListener};
+use crate::paint::BuiltPalette;
 use crate::scene::Scene;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler};
@@ -32,6 +33,7 @@ pub(crate) struct SceneBuilder<'a> {
 
     pub(crate) next_alpha_tile_index: AtomicUsize,
     pub(crate) z_buffer: ZBuffer,
+    pub(crate) built_palette: BuiltPalette,
     pub(crate) listener: Box<dyn RenderCommandListener>,
 }
 
@@ -48,6 +50,7 @@ impl<'a> SceneBuilder<'a> {
 
             next_alpha_tile_index: AtomicUsize::new(0),
             z_buffer: ZBuffer::new(effective_view_box),
+            built_palette: BuiltPalette::new(),
             listener,
         }
     }
@@ -59,7 +62,10 @@ impl<'a> SceneBuilder<'a> {
         let path_count = self.scene.paths.len();
         self.listener.send(RenderCommand::Start { bounding_quad, path_count });
 
-        self.listener.send(RenderCommand::AddPaintData(self.scene.palette.build_paint_data()));
+        // TODO(pcwalton): Move this after tile building.
+        self.built_palette = self.scene.palette.build();
+        let paint_data = self.built_palette.build_paint_data(&self.scene.palette);
+        self.listener.send(RenderCommand::AddPaintData(paint_data));
 
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let alpha_tiles = executor.flatten_into_vector(path_count, |path_index| {
@@ -67,6 +73,7 @@ impl<'a> SceneBuilder<'a> {
         });
 
         self.finish_building(alpha_tiles);
+
 
         let build_time = Instant::now() - start_time;
         self.listener.send(RenderCommand::Finish { build_time });
@@ -116,7 +123,9 @@ impl<'a> SceneBuilder<'a> {
 
     fn pack_alpha_tiles(&mut self, alpha_tiles: Vec<AlphaTileBatchPrimitive>) {
         let path_count = self.scene.paths.len() as u32;
-        let solid_tiles = self.z_buffer.build_solid_tiles(&self.scene.paths, 0..path_count);
+        let solid_tiles = self.z_buffer.build_solid_tiles(&self.scene.paths,
+                                                          &self.built_palette,
+                                                          0..path_count);
         if !solid_tiles.is_empty() {
             self.listener.send(RenderCommand::SolidTile(solid_tiles));
         }
