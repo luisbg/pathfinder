@@ -49,6 +49,7 @@ impl Scene {
         self.paths.push(path);
     }
 
+    #[inline]
     pub fn push_paint(&mut self, paint: &Paint) -> PaintId {
         self.palette.push_paint(paint)
     }
