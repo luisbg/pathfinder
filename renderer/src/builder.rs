@@ -59,7 +59,7 @@ impl<'a> SceneBuilder<'a> {
         let path_count = self.scene.paths.len();
         self.listener.send(RenderCommand::Start { bounding_quad, path_count });
 
-        self.listener.send(RenderCommand::AddPaintData(self.scene.build_paint_data()));
+        self.listener.send(RenderCommand::AddPaintData(self.scene.palette.build_paint_data()));
 
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let alpha_tiles = executor.flatten_into_vector(path_count, |path_index| {
@@ -82,7 +82,7 @@ impl<'a> SceneBuilder<'a> {
         let path_object = &scene.paths[path_index];
         let outline = scene.apply_render_options(path_object.outline(), built_options);
         let paint_id = path_object.paint();
-        let object_is_opaque = scene.paints[paint_id.0 as usize].is_opaque();
+        let object_is_opaque = scene.palette.get(paint_id).unwrap().is_opaque();
 
         let mut tiler = Tiler::new(self,
                                    &outline,
